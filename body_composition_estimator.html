@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 체형·비만도 스크리닝 프로그램</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1f232c; --line:#2a2f3a;
+    --accent:#4f8cff; --accent2:#5fd0a3; --warn:#ff9640; --danger:#ff5d6c;
+    --text:#e8ebf1; --sub:#8b93a3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:"Pretendard","Malgun Gothic",-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg); color:var(--text); padding:24px;
+  }
+  h1{font-size:20px; margin:0 0 4px 0;}
+  .sub-title{color:var(--sub); font-size:13px; margin-bottom:20px;}
+  .layout{display:grid; grid-template-columns: 1.2fr 0.8fr; gap:20px; max-width:1180px; margin:0 auto;}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr;} }
+  @media (max-width:520px){
+    body{padding:14px;}
+    h1{font-size:17px;}
+    .panel{padding:14px; border-radius:12px;}
+    .field-row{flex-wrap:wrap;}
+    .field{min-width:44%;}
+    .controls{gap:8px;}
+    button{padding:13px 14px; font-size:14px; flex:1; min-width:120px;}
+    .metric-grid{grid-template-columns:1fr 1fr; gap:8px;}
+    .gauge{width:150px; height:150px;}
+    .gauge-inner{width:114px; height:114px;}
+    table{font-size:11.5px;}
+  }
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px;}
+  .video-wrap{position:relative; width:100%; aspect-ratio:3/4; max-height:78vh; background:#000; border-radius:12px; overflow:hidden;}
+  video{display:none;}
+  canvas{width:100%; height:100%; display:block;}
+  .badge{position:absolute; top:10px; left:10px; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-size:12px; color:#cfd6e4;}
+  .badge.live::before{content:"● "; color:#ff5d6c;}
+
+  .controls{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+  button{
+    background:var(--accent); color:#fff; border:none; padding:10px 16px; border-radius:9px;
+    font-size:14px; cursor:pointer; font-weight:600; transition:.15s;
+  }
+  button.secondary{background:var(--panel2); border:1px solid var(--line); color:var(--text);}
+  button.stop{background:var(--danger);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button:hover:not(:disabled){filter:brightness(1.08);}
+
+  .field-row{display:flex; gap:10px; margin-top:12px;}
+  .field{flex:1;}
+  label{font-size:12px; color:var(--sub); display:block; margin-bottom:5px;}
+  input[type=number]{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:9px 10px; border-radius:8px; font-size:14px;
+  }
+  select{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:9px 10px; border-radius:8px; font-size:14px;
+  }
+
+  .status-line{font-size:12.5px; color:var(--sub); margin-top:10px; line-height:1.6;}
+  .status-line b{color:var(--accent2);}
+
+  .result-title{font-size:15px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px;}
+  .gauge-wrap{text-align:center; margin-bottom:18px;}
+  .gauge{
+    width:170px; height:170px; border-radius:50%; margin:0 auto 10px auto;
+    display:flex; align-items:center; justify-content:center; position:relative;
+    background:conic-gradient(var(--gauge-color, #4f8cff) calc(var(--pct,0) * 1%), #262b35 0);
+  }
+  .gauge-inner{
+    width:132px; height:132px; border-radius:50%; background:var(--panel);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .gauge-inner .num{font-size:28px; font-weight:800;}
+  .gauge-inner .lbl{font-size:11px; color:var(--sub); margin-top:2px;}
+  .type-chip{
+    display:inline-block; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:700;
+    margin:0 auto; background:var(--panel2); border:1px solid var(--line);
+  }
+
+  .metric-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;}
+  .metric{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+  .metric .m-label{font-size:11px; color:var(--sub);}
+  .metric .m-value{font-size:17px; font-weight:700; margin-top:3px;}
+  .metric .m-note{font-size:10.5px; color:var(--sub); margin-top:2px;}
+
+  .bars{margin-top:16px;}
+  .bar-row{margin-bottom:12px;}
+  .bar-head{display:flex; justify-content:space-between; font-size:12px; color:var(--sub); margin-bottom:4px;}
+  .bar-track{height:8px; background:var(--panel2); border-radius:5px; overflow:hidden;}
+  .bar-fill{height:100%; border-radius:5px; background:var(--accent);}
+
+  .disclaimer{
+    margin-top:18px; font-size:11.5px; color:var(--sub); background:var(--panel2);
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; line-height:1.6;
+  }
+  .placeholder{color:var(--sub); font-size:13px; text-align:center; padding:40px 10px;}
+  .guide-line{position:absolute; left:0; right:0; height:2px; background:rgba(95,208,163,.85); pointer-events:none;}
+  .guide-label{position:absolute; font-size:10px; background:rgba(0,0,0,.6); padding:2px 6px; border-radius:4px; color:#fff;}
+
+  .rx-box{margin-top:18px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:14px 16px;}
+  .rx-title{font-size:13px; font-weight:700; margin-bottom:10px; color:var(--accent2);}
+  .rx-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;}
+  .rx-item{font-size:12.5px;}
+  .rx-item .rx-k{color:var(--sub); font-size:11px;}
+  .rx-item .rx-v{font-weight:600; margin-top:2px;}
+  .rx-note{font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.6;}
+
+  .records-panel{max-width:1180px; margin:20px auto 0 auto;}
+  .records-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;}
+  .records-head h2{font-size:15px; margin:0;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{text-align:left; color:var(--sub); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  tbody td{padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  tbody tr:hover{background:var(--panel2);}
+  .table-wrap{overflow-x:auto; max-height:320px; overflow-y:auto;}
+  .del-btn{background:none; border:none; color:var(--danger); cursor:pointer; font-size:12px; padding:2px 6px;}
+  .empty-row{color:var(--sub); text-align:center; padding:20px;}
+</style>
+</head>
+<body>
+
+<h1>AI 체형·비만도 스크리닝 프로그램</h1>
+<div class="sub-title">웹캠 영상에서 인체 실루엣과 관절 좌표를 추출하여 체형(마름/정상/과체중/비만/근육형)과 예측 비만율을 추정합니다.</div>
+
+<div class="layout">
+
+  <!-- LEFT: camera -->
+  <div class="panel">
+    <div class="video-wrap" id="videoWrap">
+      <video id="video" playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="badge" id="statusBadge">카메라 대기 중</div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">카메라 시작</button>
+      <button id="switchBtn" class="secondary" disabled>전/후면 전환</button>
+      <button id="measureBtn" class="secondary" disabled>측정하기 (3초)</button>
+      <button id="stopBtn" class="stop" disabled>중지</button>
+    </div>
+
+    <div class="field-row" id="cameraSelectRow" style="display:none;">
+      <div class="field" style="flex:1;">
+        <label>카메라 렌즈 선택 (기기에 여러 개인 경우)</label>
+        <select id="cameraSelect"></select>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>이름 / ID</label>
+        <input type="text" id="nameInput" placeholder="예: 홍길동">
+      </div>
+      <div class="field">
+        <label>키 (cm) — 선택 입력</label>
+        <input type="number" id="heightInput" placeholder="예: 172">
+      </div>
+      <div class="field">
+        <label>몸무게 (kg) — 선택 입력</label>
+        <input type="number" id="weightInput" placeholder="예: 68">
+      </div>
+      <div class="field">
+        <label>성별</label>
+        <select id="genderInput">
+          <option value="male">남성</option>
+          <option value="female">여성</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="status-line" id="statusLine">
+      1) 카메라 시작 → 2) 전신(머리~발목)이 화면에 나오도록 1.5~2m 뒤로 이동 → 3) 정자세로 서서 <b>측정하기</b> 클릭
+    </div>
+
+    <div class="disclaimer">
+      본 프로그램은 카메라 영상 속 신체 비율(어깨·허리·엉덩이 너비 대비 신장)을 기반으로 한 <b style="color:var(--text)">참고용 스크리닝 추정치</b>이며,
+      체지방률·비만도에 대한 의학적 진단이 아닙니다. 정확한 체성분 측정은 InBody, DEXA 등 전문 장비 및 의료기관 검사를 이용하시기 바랍니다.
+      조명, 옷차림, 카메라 각도에 따라 오차가 발생할 수 있습니다. 운동처방 내용 또한 일반적 가이드라인에 근거한 예시로, 개인별 건강상태를 반영하지 않으므로
+      실제 적용 전 전문가 상담을 권장합니다. 측정 기록은 <b style="color:var(--text)">이 브라우저(로컬 저장소)에만</b> 저장되며 외부로 전송되지 않습니다.
+      <br><b style="color:var(--text)">모바일(갤럭시 등 안드로이드) 이용 안내:</b> Chrome 브라우저 사용을 권장하며, 후면 카메라 사용 시 휴대폰을 세로로 세워 거치한 뒤
+      전신이 나오도록 1.5~2m 떨어져서 측정하세요. 카메라 접근 권한을 허용해야 하며, "전/후면 전환" 버튼으로 카메라를 바꿀 수 있습니다.
+    </div>
+  </div>
+
+  <!-- RIGHT: results -->
+  <div class="panel">
+    <div class="result-title">📊 분석 결과</div>
+    <div id="resultArea">
+      <div class="placeholder">측정을 진행하면 이곳에 결과가 표시됩니다.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="panel records-panel">
+  <div class="records-head">
+    <h2>📁 측정 이력 (<span id="recordCount">0</span>건)</h2>
+    <div class="controls" style="margin-top:0;">
+      <button id="exportBtn" class="secondary">엑셀로 내보내기 (.xlsx)</button>
+      <button id="clearBtn" class="stop">전체 삭제</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>측정일시</th><th>이름/ID</th><th>성별</th><th>키(cm)</th><th>몸무게(kg)</th>
+          <th>BMI</th><th>WHtR</th><th>SWR</th><th>WHR</th>
+          <th>예측 비만율(%)</th><th>체형 분류</th><th>운동처방 요약</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="recordsBody">
+        <tr><td colspan="13" class="empty-row">아직 측정 기록이 없습니다.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const videoEl = document.getElementById('video');
+const canvasEl = document.getElementById('canvas');
+const ctx = canvasEl.getContext('2d');
+const statusBadge = document.getElementById('statusBadge');
+const statusLine = document.getElementById('statusLine');
+const startBtn = document.getElementById('startBtn');
+const measureBtn = document.getElementById('measureBtn');
+const stopBtn = document.getElementById('stopBtn');
+const resultArea = document.getElementById('resultArea');
+
+let stream = null;
+let pose = null;
+let running = false;
+let rafId = null;
+let latestLandmarks = null;
+let latestMaskCanvas = document.createElement('canvas');
+let maskCtx = latestMaskCanvas.getContext('2d', {willReadFrequently:true});
+let collecting = false;
+let samples = [];
+let currentFacing = 'environment'; // 후면 카메라 기본값 (전신 촬영은 보통 뒤 카메라 + 거치)
+let currentDeviceId = null;
+
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+
+const POSE_CONNECTIONS = [
+  [11,12],[11,13],[13,15],[12,14],[14,16],
+  [11,23],[12,24],[23,24],
+  [23,25],[25,27],[27,29],[27,31],
+  [24,26],[26,28],[28,30],[28,32]
+];
+
+function setBadge(text, live){
+  statusBadge.textContent = text;
+  statusBadge.classList.toggle('live', !!live);
+}
+
+async function getStream(constraintsOverride){
+  const base = constraintsOverride || (currentDeviceId
+    ? { deviceId: {exact: currentDeviceId}, width:{ideal:720}, height:{ideal:960} }
+    : { facingMode:{ideal: currentFacing}, width:{ideal:720}, height:{ideal:960} });
+  return navigator.mediaDevices.getUserMedia({video: base, audio:false});
+}
+
+async function populateCameraList(){
+  try{
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === 'videoinput');
+    const sel = document.getElementById('cameraSelect');
+    if(cams.length > 1){
+      sel.innerHTML = cams.map((c,i)=>`<option value="${c.deviceId}">${c.label || ('카메라 ' + (i+1))}</option>`).join('');
+      document.getElementById('cameraSelectRow').style.display = '';
+      if(currentDeviceId) sel.value = currentDeviceId;
+    } else {
+      document.getElementById('cameraSelectRow').style.display = 'none';
+    }
+  }catch(e){ /* 라벨 조회 실패 시 무시 */ }
+}
+
+async function startCamera(){
+  try{
+    stream = await getStream();
+    videoEl.srcObject = stream;
+    await videoEl.play();
+
+    // 실제 스트림 해상도에 맞춰 표시 비율 동적 조정 (세로/가로 촬영 모두 대응)
+    const vw = videoEl.videoWidth || 720, vh = videoEl.videoHeight || 960;
+    document.getElementById('videoWrap').style.aspectRatio = `${vw} / ${vh}`;
+    canvasEl.width = vw;
+    canvasEl.height = vh;
+    latestMaskCanvas.width = canvasEl.width;
+    latestMaskCanvas.height = canvasEl.height;
+
+    await populateCameraList();
+
+    pose = new Pose({locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}`});
+    pose.setOptions({
+      modelComplexity: isMobile ? 0 : 1,
+      smoothLandmarks:true,
+      enableSegmentation:true,
+      smoothSegmentation:true,
+      minDetectionConfidence:0.55,
+      minTrackingConfidence:0.55
+    });
+    pose.onResults(onResults);
+
+    running = true;
+    setBadge('분석 중', true);
+    startBtn.disabled = true;
+    measureBtn.disabled = false;
+    stopBtn.disabled = false;
+    document.getElementById('switchBtn').disabled = false;
+    statusLine.innerHTML = '전신(머리~발목)이 화면 안에 들어오도록 뒤로 물러난 뒤, 정면을 보고 바로 선 자세에서 <b>측정하기</b>를 눌러주세요. (휴대폰은 세워서 거치하는 것을 권장합니다)';
+    loop();
+  }catch(e){
+    setBadge('카메라 접근 실패');
+    statusLine.textContent = '카메라 권한을 확인해주세요: ' + e.message;
+  }
+}
+
+async function switchCamera(){
+  if(!running) return;
+  currentDeviceId = null; // 렌즈 지정 해제, facingMode로 전환
+  currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+  try{
+    stream = await getStream();
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    const vw = videoEl.videoWidth || 720, vh = videoEl.videoHeight || 960;
+    document.getElementById('videoWrap').style.aspectRatio = `${vw} / ${vh}`;
+    canvasEl.width = vw; canvasEl.height = vh;
+    latestMaskCanvas.width = canvasEl.width; latestMaskCanvas.height = canvasEl.height;
+    await populateCameraList();
+  }catch(e){
+    statusLine.textContent = '카메라 전환 실패: ' + e.message;
+  }
+}
+
+document.getElementById('cameraSelect').addEventListener('change', async (e)=>{
+  currentDeviceId = e.target.value;
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+  stream = await getStream();
+  videoEl.srcObject = stream;
+  await videoEl.play();
+  const vw = videoEl.videoWidth || 720, vh = videoEl.videoHeight || 960;
+  document.getElementById('videoWrap').style.aspectRatio = `${vw} / ${vh}`;
+  canvasEl.width = vw; canvasEl.height = vh;
+  latestMaskCanvas.width = canvasEl.width; latestMaskCanvas.height = canvasEl.height;
+});
+
+document.getElementById('switchBtn').addEventListener('click', switchCamera);
+
+async function loop(){
+  if(!running) return;
+  await pose.send({image: videoEl});
+  rafId = requestAnimationFrame(loop);
+}
+
+function onResults(results){
+  ctx.save();
+  ctx.clearRect(0,0,canvasEl.width, canvasEl.height);
+  ctx.drawImage(results.image, 0, 0, canvasEl.width, canvasEl.height);
+
+  if(results.segmentationMask){
+    maskCtx.clearRect(0,0,latestMaskCanvas.width, latestMaskCanvas.height);
+    maskCtx.drawImage(results.segmentationMask, 0, 0, latestMaskCanvas.width, latestMaskCanvas.height);
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#5fd0a3';
+    ctx.drawImage(latestMaskCanvas, 0, 0);
+    ctx.restore();
+  }
+
+  if(results.poseLandmarks){
+    latestLandmarks = results.poseLandmarks;
+    ctx.strokeStyle = '#4f8cff';
+    ctx.lineWidth = 2;
+    POSE_CONNECTIONS.forEach(([a,b])=>{
+      const p1 = results.poseLandmarks[a], p2 = results.poseLandmarks[b];
+      if(!p1||!p2) return;
+      ctx.beginPath();
+      ctx.moveTo(p1.x*canvasEl.width, p1.y*canvasEl.height);
+      ctx.lineTo(p2.x*canvasEl.width, p2.y*canvasEl.height);
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#5fd0a3';
+    results.poseLandmarks.forEach(p=>{
+      ctx.beginPath();
+      ctx.arc(p.x*canvasEl.width, p.y*canvasEl.height, 3, 0, Math.PI*2);
+      ctx.fill();
+    });
+  } else {
+    latestLandmarks = null;
+  }
+  ctx.restore();
+
+  if(collecting){
+    tryCollectSample(results);
+  }
+}
+
+// row width from segmentation mask at pixel row y (threshold on red channel)
+function rowWidthAt(y){
+  const w = latestMaskCanvas.width;
+  if(y<0 || y>=latestMaskCanvas.height) return -1;
+  const row = maskCtx.getImageData(0, y, w, 1).data;
+  let left=-1, right=-1;
+  for(let x=0; x<w; x++){
+    const alpha = row[x*4]; // mask encodes value in R channel (0-255)
+    if(alpha > 60){
+      if(left===-1) left = x;
+      right = x;
+    }
+  }
+  if(left===-1) return -1;
+  return right-left;
+}
+
+function topRow(){
+  const w = latestMaskCanvas.width, h = latestMaskCanvas.height;
+  const full = maskCtx.getImageData(0,0,w,h).data;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      if(full[(y*w+x)*4] > 60) return y;
+    }
+  }
+  return -1;
+}
+
+function tryCollectSample(results){
+  if(!results.poseLandmarks) return;
+  const lm = results.poseLandmarks;
+  const need = [11,12,23,24,27,28];
+  for(const i of need){ if(!lm[i] || lm[i].visibility < 0.4) return; }
+
+  const W = canvasEl.width, H = canvasEl.height;
+  const shoulderY = ((lm[11].y+lm[12].y)/2)*H;
+  const hipY = ((lm[23].y+lm[24].y)/2)*H;
+  const ankleY = ((lm[27].y+lm[28].y)/2)*H;
+  const headTopY = topRow();
+  if(headTopY < 0) return;
+
+  const shoulderWidth = Math.abs(lm[11].x-lm[12].x)*W;
+  const hipWidth = Math.abs(lm[23].x-lm[24].x)*W;
+
+  // scan for narrowest point (waist) between 35%~75% of shoulder->hip span
+  let yTop = shoulderY + (hipY-shoulderY)*0.30;
+  let yBot = shoulderY + (hipY-shoulderY)*0.80;
+  let minW = Infinity;
+  for(let y=Math.round(yTop); y<=Math.round(yBot); y+=2){
+    const w = rowWidthAt(y);
+    if(w>0 && w<minW) minW = w;
+  }
+  if(minW===Infinity) return;
+
+  const pixelHeight = ankleY - headTopY;
+  if(pixelHeight <= 0) return;
+
+  samples.push({
+    shoulderWidth, hipWidth, waistWidth:minW, pixelHeight
+  });
+}
+
+function average(arr){
+  const n = arr.length;
+  return {
+    shoulderWidth: arr.reduce((s,v)=>s+v.shoulderWidth,0)/n,
+    hipWidth: arr.reduce((s,v)=>s+v.hipWidth,0)/n,
+    waistWidth: arr.reduce((s,v)=>s+v.waistWidth,0)/n,
+    pixelHeight: arr.reduce((s,v)=>s+v.pixelHeight,0)/n,
+  };
+}
+
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function computeAndRender(avg){
+  const WHtR = avg.waistWidth / avg.pixelHeight;       // 허리-신장 비율(추정)
+  const SWR = avg.shoulderWidth / avg.waistWidth;      // 어깨-허리 비율
+  const WHR = avg.waistWidth / avg.hipWidth;           // 허리-엉덩이 비율(추정)
+
+  // WHtR -> obesity score (0~100), reference: 0.40=>10, 0.50=>50, 0.62=>90
+  function interp(x, x0,y0, x1,y1){ return y0 + (x-x0)*(y1-y0)/(x1-x0); }
+  let whtrScore;
+  if(WHtR <= 0.40) whtrScore = interp(WHtR, 0.30,0,0.40,10);
+  else if(WHtR <= 0.50) whtrScore = interp(WHtR, 0.40,10,0.50,50);
+  else if(WHtR <= 0.62) whtrScore = interp(WHtR, 0.50,50,0.62,90);
+  else whtrScore = interp(WHtR, 0.62,90,0.75,100);
+  whtrScore = clamp(whtrScore, 0, 100);
+
+  // optional BMI
+  const heightCm = parseFloat(document.getElementById('heightInput').value);
+  const weightKg = parseFloat(document.getElementById('weightInput').value);
+  const gender = document.getElementById('genderInput').value;
+  let bmi = null, bmiScore = null;
+  if(heightCm > 0 && weightKg > 0){
+    bmi = weightKg / Math.pow(heightCm/100, 2);
+    if(bmi <= 18.5) bmiScore = interp(bmi, 15,5, 18.5,15);
+    else if(bmi <= 23) bmiScore = interp(bmi, 18.5,15, 23,40);
+    else if(bmi <= 25) bmiScore = interp(bmi, 23,40, 25,60);
+    else if(bmi <= 30) bmiScore = interp(bmi, 25,60, 30,85);
+    else bmiScore = interp(bmi, 30,85, 40,100);
+    bmiScore = clamp(bmiScore, 0, 100);
+  }
+
+  let combinedScore = (bmiScore!==null) ? (bmiScore*0.6 + whtrScore*0.4) : whtrScore;
+
+  // muscularity adjustment: high SWR (broad shoulder vs waist) + not-high WHtR => 근육형 보정
+  const muscularSignal = SWR >= 1.35 && WHtR <= 0.55;
+  let muscleAdjust = 0;
+  if(muscularSignal){
+    muscleAdjust = clamp((SWR-1.35)*40, 0, 15);
+    combinedScore = clamp(combinedScore - muscleAdjust, 0, 100);
+  }
+  combinedScore = clamp(combinedScore, 0, 100);
+
+  // classification
+  let type, typeColor;
+  if(muscularSignal && combinedScore < 55){
+    type = '근육형 (역삼각 체형)'; typeColor = '#5fd0a3';
+  } else if(combinedScore < 20){
+    type = '저체중/마른 체형'; typeColor = '#7fb2ff';
+  } else if(combinedScore < 45){
+    type = '정상 체형'; typeColor = '#5fd0a3';
+  } else if(combinedScore < 65){
+    type = '과체중 경향'; typeColor = '#ff9640';
+  } else {
+    type = '비만 위험군'; typeColor = '#ff5d6c';
+  }
+
+  const rx = buildPrescription(type, WHtR, combinedScore, muscularSignal);
+
+  const record = {
+    time: new Date().toLocaleString('ko-KR'),
+    name: document.getElementById('nameInput').value || '미입력',
+    gender: gender === 'male' ? '남성' : '여성',
+    heightCm: heightCm || '',
+    weightKg: weightKg || '',
+    bmi: bmi ? bmi.toFixed(1) : '',
+    WHtR: WHtR.toFixed(3),
+    SWR: SWR.toFixed(2),
+    WHR: WHR.toFixed(2),
+    score: Math.round(combinedScore),
+    type,
+    rxSummary: rx.summary
+  };
+
+  renderResult({
+    combinedScore, type, typeColor, WHtR, SWR, WHR, bmi, rx
+  });
+
+  saveRecord(record);
+}
+
+// 체형 분류 및 위험도에 따른 운동처방(예시) 생성
+function buildPrescription(type, WHtR, score, muscularSignal){
+  let cardio, strength, flexibility, note, summary;
+
+  if(muscularSignal && score < 55){
+    cardio = '주 2~3회, 20~30분, 중강도 (인터벌/컨디셔닝 위주)';
+    strength = '주 3~4회, 분할 루틴으로 근력·근비대 유지 (점진과부하 원칙)';
+    flexibility = '매일 10분, 가동성 및 회복 목적 스트레칭/폼롤러';
+    note = '근력은 양호한 편으로, 심폐지구력 보완과 회복 관리에 초점을 맞추는 것을 권장합니다.';
+    summary = '유산소 보완형 (근력 유지+심폐지구력 향상)';
+  } else if(score < 20){
+    cardio = '주 1~2회, 15~20분, 저강도 (걷기 등 컨디셔닝)';
+    strength = '주 3~4회, 복합관절 운동(스쿼트·데드리프트·벤치프레스 등) 중심 근비대 프로그램';
+    flexibility = '주 3회, 관절 가동범위 확보 목적 스트레칭';
+    note = '체중·근육량 증가가 목표인 체형입니다. 근력 운동 비중을 높이고 충분한 영양 섭취를 병행하는 것이 좋습니다.';
+    summary = '근비대 중심형 (근력운동 비중 확대)';
+  } else if(score < 45){
+    cardio = '주 3회, 30분, 중강도 (걷기/조깅/자전거)';
+    strength = '주 2~3회, 전신 근력운동으로 현재 체형 유지';
+    flexibility = '주 2~3회, 스트레칭 위주';
+    note = '현재 체형을 유지하는 수준의 균형 잡힌 운동 프로그램을 권장합니다.';
+    summary = '균형 유지형 (유산소+근력 균형)';
+  } else if(score < 65){
+    cardio = '주 4~5회, 30~40분, 중강도 (최대심박수 60~70% 목표)';
+    strength = '주 2~3회, 대근육군(하체·등·가슴) 위주 근력운동';
+    flexibility = '주 3회, 스트레칭 및 폼롤링';
+    note = '유산소 운동 빈도를 늘리고 식이 조절을 병행하면 체형 개선에 도움이 됩니다.';
+    summary = '체지방 감량형 (유산소 비중 확대 + 식이 병행)';
+  } else {
+    cardio = '주 5회 이상, 30~45분, 저강도로 시작해 점진적으로 강도 증가 (걷기/수영/실내자전거 등 관절 부담 적은 운동 우선)';
+    strength = '주 2회, 저강도 전신 근력운동 (관절 보호 위주)';
+    flexibility = '매일 10~15분, 관절 부담 완화를 위한 스트레칭';
+    note = '체중·체형 관리를 위해 유산소 운동 비중을 크게 늘리고, 필요 시 전문가(운동처방사·의료진) 상담을 함께 받는 것을 권장합니다.';
+    summary = '체중 관리 집중형 (저충격 유산소 중심 + 전문가 상담 권장)';
+  }
+
+  return {cardio, strength, flexibility, note, summary};
+}
+
+function renderResult(r){
+  const pct = Math.round(r.combinedScore);
+  resultArea.innerHTML = `
+    <div class="gauge-wrap" style="--pct:${pct}; --gauge-color:${r.typeColor};">
+      <div class="gauge">
+        <div class="gauge-inner">
+          <div class="num">${pct}%</div>
+          <div class="lbl">예측 비만율(추정)</div>
+        </div>
+      </div>
+      <div class="type-chip" style="border-color:${r.typeColor}; color:${r.typeColor};">${r.type}</div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="m-label">허리-신장 비율 (WHtR)</div>
+        <div class="m-value">${r.WHtR.toFixed(3)}</div>
+        <div class="m-note">0.50 이하 권장</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">어깨-허리 비율 (SWR)</div>
+        <div class="m-value">${r.SWR.toFixed(2)}</div>
+        <div class="m-note">높을수록 역삼각 체형</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">허리-엉덩이 비율 (WHR)</div>
+        <div class="m-value">${r.WHR.toFixed(2)}</div>
+        <div class="m-note">체지방 분포 참고 지표</div>
+      </div>
+      <div class="metric">
+        <div class="m-label">입력 BMI</div>
+        <div class="m-value">${r.bmi ? r.bmi.toFixed(1) : '미입력'}</div>
+        <div class="m-note">${r.bmi ? '키/몸무게 기반' : '키/몸무게 입력 시 반영'}</div>
+      </div>
+    </div>
+
+    <div class="bars">
+      <div class="bar-row">
+        <div class="bar-head"><span>WHtR 기반 위험도</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${clamp(r.WHtR/0.7*100,0,100)}%; background:#ff9640;"></div></div>
+      </div>
+    </div>
+
+    <div class="rx-box">
+      <div class="rx-title">🏋️ 맞춤 운동처방 (예시 · 참고용)</div>
+      <div class="rx-grid">
+        <div class="rx-item"><div class="rx-k">유산소</div><div class="rx-v">${r.rx.cardio}</div></div>
+        <div class="rx-item"><div class="rx-k">근력운동</div><div class="rx-v">${r.rx.strength}</div></div>
+        <div class="rx-item" style="grid-column:1/3;"><div class="rx-k">유연성/가동성</div><div class="rx-v">${r.rx.flexibility}</div></div>
+      </div>
+      <div class="rx-note">${r.rx.note} 본 처방은 일반적인 운동생리학 가이드라인에 근거한 예시이며, 개인 건강상태(질환·부상 이력 등)를 고려한 것이 아니므로 시작 전 전문가 상담을 권장합니다.</div>
+    </div>
+  `;
+}
+
+// ===== 측정 이력 저장 / 테이블 / 엑셀 내보내기 =====
+const STORAGE_KEY = 'bodyCompositionRecords';
+
+function loadRecords(){
+  try{
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  }catch(e){ return []; }
+}
+
+function persistRecords(list){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+function saveRecord(record){
+  const list = loadRecords();
+  record.id = Date.now();
+  list.unshift(record);
+  persistRecords(list);
+  renderRecordsTable();
+}
+
+function renderRecordsTable(){
+  const list = loadRecords();
+  const body = document.getElementById('recordsBody');
+  document.getElementById('recordCount').textContent = list.length;
+
+  if(list.length === 0){
+    body.innerHTML = '<tr><td colspan="13" class="empty-row">아직 측정 기록이 없습니다.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = list.map(r => `
+    <tr>
+      <td>${r.time}</td>
+      <td>${r.name}</td>
+      <td>${r.gender}</td>
+      <td>${r.heightCm}</td>
+      <td>${r.weightKg}</td>
+      <td>${r.bmi}</td>
+      <td>${r.WHtR}</td>
+      <td>${r.SWR}</td>
+      <td>${r.WHR}</td>
+      <td>${r.score}</td>
+      <td>${r.type}</td>
+      <td>${r.rxSummary}</td>
+      <td><button class="del-btn" onclick="deleteRecord(${r.id})">삭제</button></td>
+    </tr>
+  `).join('');
+}
+
+function deleteRecord(id){
+  const list = loadRecords().filter(r => r.id !== id);
+  persistRecords(list);
+  renderRecordsTable();
+}
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(!confirm('모든 측정 기록을 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+  persistRecords([]);
+  renderRecordsTable();
+});
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const list = loadRecords();
+  if(list.length === 0){ alert('내보낼 측정 기록이 없습니다.'); return; }
+
+  const rows = list.map(r => ({
+    '측정일시': r.time,
+    '이름/ID': r.name,
+    '성별': r.gender,
+    '키(cm)': r.heightCm,
+    '몸무게(kg)': r.weightKg,
+    'BMI': r.bmi,
+    'WHtR(허리-신장비)': r.WHtR,
+    'SWR(어깨-허리비)': r.SWR,
+    'WHR(허리-엉덩이비)': r.WHR,
+    '예측 비만율(%)': r.score,
+    '체형 분류': r.type,
+    '운동처방 요약': r.rxSummary
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = Object.keys(rows[0]).map(()=>({wch:16}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '측정기록');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `체형분석_측정기록_${dateStr}.xlsx`);
+});
+
+// 페이지 로드시 기존 기록 표시
+renderRecordsTable();
+
+document.getElementById('measureBtn').addEventListener('click', ()=>{
+  if(!running) return;
+  samples = [];
+  collecting = true;
+  measureBtn.disabled = true;
+  measureBtn.textContent = '측정 중... 정자세 유지';
+  statusLine.textContent = '측정 중입니다. 3초간 정면을 보고 바로 선 자세를 유지해주세요.';
+
+  setTimeout(()=>{
+    collecting = false;
+    measureBtn.disabled = false;
+    measureBtn.textContent = '측정하기 (3초)';
+    if(samples.length < 5){
+      statusLine.textContent = '측정 실패: 전신(특히 머리 위, 발목)이 화면 안에 있는지, 조명이 충분한지 확인 후 다시 시도해주세요.';
+      return;
+    }
+    const avg = average(samples);
+    computeAndRender(avg);
+    statusLine.innerHTML = '측정 완료. 자세를 바꿔 다시 <b>측정하기</b>를 누르면 재측정됩니다.';
+  }, 3000);
+});
+
+startBtn.addEventListener('click', startCamera);
+
+stopBtn.addEventListener('click', ()=>{
+  running = false;
+  if(rafId) cancelAnimationFrame(rafId);
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+  setBadge('중지됨');
+  startBtn.disabled = false;
+  measureBtn.disabled = true;
+  stopBtn.disabled = true;
+  document.getElementById('switchBtn').disabled = true;
+  ctx.clearRect(0,0,canvasEl.width,canvasEl.height);
+});
+</script>
+</body>
+</html>
